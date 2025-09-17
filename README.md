@@ -36,6 +36,7 @@ python -m src.ingest
 
 # 4) Run API + UI (Windows-friendly)
 python -m uvicorn src.app:app --host 0.0.0.0 --port 5000 --reload
+```
 
 Endpoints
 
