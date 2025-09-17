@@ -1,0 +1,20 @@
+﻿# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local data/secrets
+.env
+storage/        # vector index cache
+*.sqlite
+*.db
+
+# Node (if you add a front-end later)
+node_modules/
+dist/

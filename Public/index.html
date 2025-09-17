@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Café RAG Bot</title>
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#0b1220; --muted:#9aa4b2; --text:#e5e7eb;
+      --card:#121a2b; --line:#1e293b; --accent:#22d3ee; --accent-ink:#063a46;
+      --chip:#1f2937;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; color:var(--text); background:radial-gradient(1200px 800px at 20% -10%, #152237 0, #0f172a 40%, #0b1220 100%); font:15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; height:100vh; display:flex}
+
+    /* Layout */
+    .main{flex:1; display:flex; flex-direction:column; min-width:0}
+    header{display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--line); background:rgba(11,18,32,.7); backdrop-filter: blur(8px)}
+    header .title{font-weight:700}
+    header .pill{font-size:12px; color:var(--muted); border:1px solid var(--line); background:#0a1021; padding:4px 8px; border-radius:999px}
+    .container{max-width:900px; width:100%; margin:0 auto; padding:18px}
+
+    /* Chat */
+    #chat{display:flex; flex-direction:column; gap:10px; margin-bottom:110px}
+    .row{display:flex}
+    .bubble{max-width:72%; background:var(--card); border:1px solid var(--line); padding:12px 14px; border-radius:14px}
+    .user{justify-content:flex-end}
+    .user .bubble{background:#1d283a}
+    .sources{margin-top:6px; font-size:12px; color:var(--muted); border-top:1px dashed var(--line); padding-top:6px}
+
+    /* Composer */
+    .composer{position:fixed; left:0; right:280px; bottom:0; border-top:1px solid var(--line); background:linear-gradient(180deg, rgba(15,23,42,0), rgba(15,23,42,.92)), var(--bg); padding:14px 18px}
+    .composer .inner{max-width:900px; margin:0 auto; display:flex; gap:10px}
+    input#q{flex:1; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:12px}
+    select{background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:10px}
+    button.send{background:var(--accent); color:var(--accent-ink); border:none; padding:12px 16px; border-radius:12px; font-weight:700; cursor:pointer}
+
+    /* Sidebar (right) */
+    .sidebar{position:fixed; right:0; top:0; bottom:0; width:280px; background:#0b1020; border-left:1px solid var(--line); display:flex; flex-direction:column}
+    .sb-header{display:flex; align-items:center; justify-content:space-between; padding:14px 14px; border-bottom:1px solid var(--line)}
+    .brand{display:flex; align-items:center; gap:8px}
+    .dot{width:8px; height:8px; background:var(--accent); border-radius:999px; box-shadow:0 0 12px var(--accent)}
+    .sb-toggle{background:transparent; color:var(--muted); border:1px solid var(--line); border-radius:10px; padding:6px; cursor:pointer}
+    .sb-nav{flex:1; overflow:auto; padding:10px 12px 14px 12px}
+    .sb-section{margin:12px 0; padding:12px; background:var(--card); border:1px solid var(--line); border-radius:12px}
+    .sb-title{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px}
+    .sb-link{display:flex; align-items:center; gap:10px; padding:10px; border-radius:10px; color:var(--text); text-decoration:none; border:1px solid transparent}
+    .sb-link:hover{background:#131c2e; border-color:#1c2942}
+    .sb-link.active{background:#131c2e; border-color:#22334f}
+    .sb-link .ico{width:22px; height:22px; display:grid; place-items:center; color:#9fb3c8}
+    .sb-check{display:flex; align-items:center; gap:8px; padding:8px 0; color:#e2e8f0}
+    .sb-row{display:flex; gap:10px; align-items:flex-end; margin-top:8px}
+    .sb-field{flex:1}
+    .sb-field input{width:100%; background:#0e1627; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:8px 10px}
+    .sb-apply{background:#16a34a; color:#031a12; border:none; padding:9px 12px; border-radius:10px; cursor:pointer}
+    .sb-chip{background:var(--chip); border:1px solid var(--line); color:#cbd5e1; padding:6px 10px; border-radius:999px; cursor:pointer; margin:4px 6px 0 0}
+    .sb-footer{padding:10px 14px; border-top:1px solid var(--line); color:var(--muted); font-size:12px}
+    .pill{border:1px solid var(--line); padding:3px 8px; border-radius:999px}
+
+    /* Collapsed state */
+    .sidebar.collapsed{width:68px}
+    .sidebar.collapsed .txt{display:none}
+    .sidebar.collapsed .sb-section{padding:10px}
+    .composer.collapsed-pad{right:68px}
+
+    @media (max-width: 900px){
+      .sidebar{display:none}
+      .composer{right:0}
+    }
+  </style>
+</head>
+<body>
+  <div class="main">
+    <header>
+      <div class="title">☕ Café RAG Bot</div>
+      <span id="status" class="pill">checking…</span>
+      <span class="pill">provider: <code id="prov">?</code></span>
+      <span class="pill">llm: <code id="llm">?</code></span>
+      <span class="pill">embed: <code id="emb">?</code></span>
+    </header>
+
+    <main class="container">
+      <div id="chat"></div>
+    </main>
+
+    <div class="composer" id="composer">
+      <div class="inner">
+        <input id="q" placeholder="Ask the menu… e.g. vegan drinks under $5" autocomplete="off" />
+        <select id="k" title="Top-K">
+          <option value="3" selected>k=3</option>
+          <option value="5">k=5</option>
+          <option value="8">k=8</option>
+        </select>
+        <select id="mode" title="Mode">
+          <option value="llm" selected>LLM</option>
+          <option value="retrieval">Retrieval</option>
+        </select>
+        <button class="send" id="sendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar container (menu.html will load here) -->
+  <div id="sidebar-container"></div>
+
+  <script>
+    const api = location.origin;
+    const el = {
+      chat: document.getElementById('chat'),
+      q: document.getElementById('q'),
+      k: document.getElementById('k'),
+      mode: document.getElementById('mode'),
+      send: document.getElementById('sendBtn'),
+      status: document.getElementById('status'),
+      prov: document.getElementById('prov'),
+      llm: document.getElementById('llm'),
+      emb: document.getElementById('emb'),
+      sidebarWrap: document.getElementById('sidebar-container'),
+      composer: document.getElementById('composer'),
+    };
+
+    function bubble(text, who='bot', sources=[]){
+      const row = document.createElement('div');
+      row.className = 'row ' + (who==='user'?'user':'bot');
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      b.textContent = text;
+      row.appendChild(b);
+      if(sources.length && who==='bot'){
+        const s = document.createElement('div');
+        s.className = 'sources';
+        s.innerHTML = sources.map((sn,i)=>`#${i+1} <strong>${sn.metadata?.item ?? ''}</strong> (${sn.metadata?.price ?? ''})`).join(' &middot; ');
+        b.appendChild(s);
+      }
+      el.chat.appendChild(row);
+      el.chat.scrollTop = el.chat.scrollHeight;
+    }
+
+    async function health(){
+      try{
+        const res = await fetch(`${api}/health`);
+        const data = await res.json();
+        if(data.status==='ok'){
+          el.status.textContent = 'healthy';
+          el.prov.textContent = data.provider ?? '?';
+          el.llm.textContent = data.llm ?? '?';
+          el.emb.textContent = data.embed ?? '?';
+        }else{
+          el.status.textContent = 'error';
+        }
+      }catch{
+        el.status.textContent = 'offline';
+      }
+    }
+
+    async function ask(){
+      const question = el.q.value.trim();
+      if(!question) return;
+      const use_llm = el.mode.value === 'llm';
+      const k = parseInt(el.k.value,10)||3;
+
+      bubble(question,'user');
+      el.q.value = '';
+      bubble('Thinking…');
+
+      try{
+        const res = await fetch(`${api}/chat`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({question,k,use_llm})
+        });
+        const data = await res.json();
+        el.chat.lastChild.remove();
+        bubble(data.answer || '(No answer)', 'bot', data.sources || []);
+      }catch{
+        el.chat.lastChild.remove();
+        bubble('Request failed. Check server logs.','bot');
+      }
+    }
+
+    el.send.addEventListener('click', ask);
+    el.q.addEventListener('keydown', e=>{ if(e.key==='Enter') ask(); });
+
+    // Load sidebar & wire up interactions
+    fetch('menu.html').then(r=>r.text()).then(html=>{
+      el.sidebarWrap.innerHTML = html;
+      const sb = document.querySelector('.sidebar');
+      const toggle = document.getElementById('sbToggle');
+      const providerChip = document.getElementById('sbProvider');
+
+      // remember collapsed state
+      const collapsed = localStorage.getItem('sb-collapsed') === '1';
+      if(collapsed){ sb.classList.add('collapsed'); el.composer.classList.add('collapsed-pad'); }
+
+      toggle?.addEventListener('click', ()=>{
+        sb.classList.toggle('collapsed');
+        el.composer.classList.toggle('collapsed-pad');
+        localStorage.setItem('sb-collapsed', sb.classList.contains('collapsed') ? '1' : '0');
+      });
+
+      // quick asks
+      document.querySelectorAll('.sb-chip[data-ask]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          el.q.value = btn.getAttribute('data-ask') || '';
+          ask();
+        });
+      });
+
+      // filters demo (you can wire these to modify the question)
+      document.getElementById('applyFilters')?.addEventListener('click', ()=>{
+        const vegan = document.querySelector('[data-filter="vegan"]')?.checked;
+        const gf = document.querySelector('[data-filter="glutenfree"]')?.checked;
+        const df = document.querySelector('[data-filter="dairyfree"]')?.checked;
+        const maxp = document.querySelector('[data-filter="maxprice"]')?.value;
+        let q = 'Find items';
+        const tags = [];
+        if(vegan) tags.push('vegan');
+        if(gf) tags.push('gluten-free');
+        if(df) tags.push('dairy-free');
+        if(tags.length) q += ' that are ' + tags.join(', ') ;
+        if(maxp) q += ` under $${maxp}`;
+        q += '.';
+        el.q.value = q;
+        ask();
+      });
+
+      // show provider in footer chip too
+      fetch(`${api}/health`).then(r=>r.json()).then(d=>{
+        if(d?.provider) providerChip.textContent = `provider: ${d.provider}`;
+      });
+    });
+
+    health();
+  </script>
+</body>
+</html>
